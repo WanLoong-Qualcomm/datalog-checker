@@ -10,8 +10,7 @@
       "tolerance": 15
     },
     "Coverage": {
-      "enabled": true,
-      "status": "BETA - UNSTABLE"
+      "enabled": true
     }
   },
   "files": [

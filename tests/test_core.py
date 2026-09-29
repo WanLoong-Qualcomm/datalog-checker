@@ -158,6 +158,23 @@ class ScanTests(unittest.TestCase):
         self.assertEqual(len(strict_failures), 1)
         self.assertEqual(len(strict_failures[0].out_of_spec), 2)
 
+    def test_temperature_uses_configured_measurement_names(self) -> None:
+        path = self._write_temperature_csv(
+            header_extra=[],
+            values=[40.0],
+            measurement_name="THERM_AUX_TEMP",
+        )
+
+        failures = scan_temperature_file(
+            path,
+            "aux.csv",
+            tolerance=10,
+            strict=True,
+            measurement_names=["THERM_AUX_TEMP"],
+        )
+
+        self.assertEqual(failures, [])
+
     def test_combined_csv_report_has_machine_readable_temperature_rows(self) -> None:
         path = self._write_temperature_csv(
             header_extra=[],
@@ -176,6 +193,7 @@ class ScanTests(unittest.TestCase):
         header_extra: list[str],
         values: list[float],
         setpoints: list[str] | None = None,
+        measurement_name: str = "THERM_DIODE_HKADC_TEMP",
     ) -> Path:
         path = Path(self.temp_directory.name) / "temperature.csv"
         header = [
@@ -190,7 +208,7 @@ class ScanTests(unittest.TestCase):
             writer.writerow(["SEQUENCE_FILE=C:/sequence.seq"])
             writer.writerow(header)
             for index, value in enumerate(values):
-                row = ["row", "DUT-1", "THERM_DIODE_HKADC_TEMP", str(value)]
+                row = ["row", "DUT-1", measurement_name, str(value)]
                 if setpoints is not None:
                     row.extend([setpoints[index]])
                 writer.writerow(row)

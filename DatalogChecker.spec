@@ -5,7 +5,7 @@ a = Analysis(
     ['datalog_checker/gui.py'],
     pathex=['.'],
     binaries=[],
-    datas=[('config.json', '.')],
+    datas=[('config.json', '.'), ('assets/datalog_checker.ico', 'assets')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -35,4 +35,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon='assets/datalog_checker.ico',
 )

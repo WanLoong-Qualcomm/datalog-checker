@@ -20,8 +20,10 @@ from datalog_checker.coverage import (
 )
 from datalog_checker.coverage_config import (
     CoverageConfigError,
+    DEFAULT_TEMPERATURE_MEASUREMENTS,
     TestNameMapping,
     default_coverage_config_path,
+    load_temperature_measurement_names,
     load_test_name_mapping,
 )
 from datalog_checker.core import (
@@ -43,6 +45,7 @@ from datalog_checker.core import (
 __all__ = [
     "CheckSettings",
     "CoverageConfigError",
+    "DEFAULT_TEMPERATURE_MEASUREMENTS",
     "CoverageError",
     "CoverageEvaluationGroup",
     "CoverageGap",
@@ -62,6 +65,7 @@ __all__ = [
     "group_by_dut",
     "load_manifest",
     "load_settings",
+    "load_temperature_measurement_names",
     "load_test_name_mapping",
     "parse_gain_threshold",
     "parse_temperature_tolerance",

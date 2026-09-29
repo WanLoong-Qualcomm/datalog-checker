@@ -7,6 +7,7 @@ from pathlib import Path
 
 from datalog_checker.coverage_config import (
     CoverageConfigError,
+    load_temperature_measurement_names,
     load_test_name_mapping,
 )
 
@@ -59,6 +60,36 @@ class CoverageConfigTests(unittest.TestCase):
 
         with self.assertRaises(CoverageConfigError):
             load_test_name_mapping(self.path)
+
+    def test_loads_temperature_measurement_names_as_a_normalized_list(self) -> None:
+        self.write_config(
+            {
+                "temperature_measurements": [
+                    " therm_diode_hkadc_temp ",
+                    "THERM_AUX_TEMP",
+                    "THERM_AUX_TEMP",
+                ]
+            }
+        )
+
+        self.assertEqual(
+            load_temperature_measurement_names(self.path),
+            ("THERM_DIODE_HKADC_TEMP", "THERM_AUX_TEMP"),
+        )
+
+    def test_missing_temperature_measurements_keeps_legacy_default(self) -> None:
+        self.write_config({"tests_to_tnames": {"GAIN": ["GAIN_I"]}})
+
+        self.assertEqual(
+            load_temperature_measurement_names(self.path),
+            ("THERM_DIODE_HKADC_TEMP",),
+        )
+
+    def test_rejects_empty_temperature_measurement_list(self) -> None:
+        self.write_config({"temperature_measurements": []})
+
+        with self.assertRaises(CoverageConfigError):
+            load_temperature_measurement_names(self.path)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,7 @@
 {
+  "temperature_measurements": [
+    "THERM_DIODE_HKADC_TEMP"
+  ],
   "tests_to_tnames": {
     "GAIN": [
       "GAIN_I",
@@ -6,6 +9,33 @@
     ],
     "SSNFWSPURREMOVAL": [
       "SSNFWSPURREMOVAL_I+JQ"
+    ],
+    "SSNF-FIRSTRBWSPURREMOVAL": [
+      "SSNF-FIRSTRBWSPURREMOVAL_I+JQ"
+    ],
+    "SSNF-LASTRBWSPURREMOVAL": [
+      "SSNF-FIRSTRBWSPURREMOVAL_I+JQ"
+    ],
+    "IP2IB": [
+      "IP2IB_IQ"
+    ],
+    "IP3IB": [
+      "IP3IB_IQ"
+    ],
+    "IP2ACS": [
+      "IP2ACS_IQ"
+    ],
+    "IP3ACS": [
+      "IP3ACS_IQ"
+    ],
+    "GCIB" : [
+      "GCIB_I",
+      "GCIB_Q"
+    ],
+    "S11": [
+      "S11-LOW",
+      "S11-MID",
+      "S11-HIGH"
     ],
     "NF_YFACTOR" : [
       "SSNF-FIRSTRBWSPURREMOVAL_I+JQ"

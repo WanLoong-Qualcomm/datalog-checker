@@ -13,10 +13,26 @@ class CoverageConfigError(ValueError):
     """Raised when the coverage mapping configuration is invalid."""
 
 
+DEFAULT_TEMPERATURE_MEASUREMENTS = ("THERM_DIODE_HKADC_TEMP",)
+
+
 def _normalise_name(value: Any, field_name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise CoverageConfigError(f"{field_name} must be a non-empty string.")
     return value.strip().upper()
+
+
+def _load_config(path: Path) -> dict[str, Any]:
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8-sig"))
+    except json.JSONDecodeError as error:
+        raise CoverageConfigError(
+            f"{path} is not valid JSON: {error.msg}."
+        ) from error
+
+    if not isinstance(raw, dict):
+        raise CoverageConfigError(f"{path} must contain a JSON object.")
+    return raw
 
 
 @dataclass(frozen=True)
@@ -49,15 +65,7 @@ def default_coverage_config_path() -> Path:
 def load_test_name_mapping(path: Path | None = None) -> TestNameMapping:
     """Load and validate the TESTS-to-TNAME mapping from ``config.json``."""
     config_path = path or default_coverage_config_path()
-    try:
-        raw = json.loads(config_path.read_text(encoding="utf-8-sig"))
-    except json.JSONDecodeError as error:
-        raise CoverageConfigError(
-            f"{config_path} is not valid JSON: {error.msg}."
-        ) from error
-
-    if not isinstance(raw, dict):
-        raise CoverageConfigError(f"{config_path} must contain a JSON object.")
+    raw = _load_config(config_path)
     raw_mapping = raw.get("tests_to_tnames")
     if not isinstance(raw_mapping, dict) or not raw_mapping:
         raise CoverageConfigError(
@@ -92,3 +100,29 @@ def load_test_name_mapping(path: Path | None = None) -> TestNameMapping:
         mapping[key] = tuple(normalized_values)
 
     return TestNameMapping(mapping)
+
+
+def load_temperature_measurement_names(
+    path: Path | None = None,
+) -> tuple[str, ...]:
+    """Load the TNAME values used by the temperature check.
+
+    Older configuration files may omit this field; those files retain the
+    original single-measurement behavior.
+    """
+    config_path = path or default_coverage_config_path()
+    raw = _load_config(config_path)
+    raw_names = raw.get("temperature_measurements")
+    if raw_names is None:
+        return DEFAULT_TEMPERATURE_MEASUREMENTS
+    if not isinstance(raw_names, list) or not raw_names:
+        raise CoverageConfigError(
+            f"{config_path} must contain a non-empty 'temperature_measurements' list."
+        )
+
+    names: list[str] = []
+    for raw_name in raw_names:
+        name = _normalise_name(raw_name, "Temperature measurement name")
+        if name not in names:
+            names.append(name)
+    return tuple(names)

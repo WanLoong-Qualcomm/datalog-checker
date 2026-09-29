@@ -118,7 +118,7 @@ class CoverageEvaluationGroup:
 
 @dataclass(frozen=True)
 class CoverageResult:
-    """Coverage analysis for one datalog file."""
+    """Coverage analysis for the label declared by one datalog file."""
 
     dut_sn: str
     csv_file: str
@@ -171,18 +171,8 @@ class CoverageResult:
 
     @property
     def ambiguity_warning(self) -> str | None:
-        """Return a warning when multiple labels share the best percentage."""
-        if len(self.selected_labels) < 2:
-            return None
-        selected_evaluations = self.selected_evaluations
-        if not selected_evaluations:
-            return None
-        coverage = float(selected_evaluations[0].coverage_ratio)
-        labels = ", ".join(self.selected_labels)
-        return (
-            f"Multiple candidate labels tie at {coverage:.1%} coverage: "
-            f"{labels}."
-        )
+        """Retained for report/API compatibility; label selection is deterministic."""
+        return None
 
 
 @dataclass(frozen=True)
@@ -273,7 +263,7 @@ def _read_sequence_configuration(
 
 def _read_datalog(
     path: Path,
-) -> tuple[str, str, set[tuple[str, str, str]]]:
+) -> tuple[str, str, str, set[tuple[str, str, str]]]:
     with path.open(
         "r", newline="", encoding="utf-8-sig", errors="replace"
     ) as handle:
@@ -296,11 +286,13 @@ def _read_datalog(
                 "Config_GainMode": ("TCOND=CONFIG_GAINMODE_RX",),
                 "TNAME": ("TNAME",),
                 "DUT_SN": ("TCOND=DUT_SN", "DUT_SN"),
+                "Label": ("TCOND=CONFIG_SEQ_FROM_CSV",),
             },
             path,
         )
         seen: set[tuple[str, str, str]] = set()
         dut_names: list[str] = []
+        labels: list[str] = []
         required_index = max(columns.values())
         for row in reader:
             if len(row) <= required_index:
@@ -308,6 +300,9 @@ def _read_datalog(
             dut_sn = row[columns["DUT_SN"]].strip()
             if dut_sn and dut_sn not in dut_names:
                 dut_names.append(dut_sn)
+            label = _normalise_value(row[columns["Label"]])
+            if label and label not in labels:
+                labels.append(label)
             main_script_key = _normalise_value(row[columns["Main_Script_Key"]])
             gain_mode = _normalise_value(row[columns["Config_GainMode"]])
             tname = _normalise_value(row[columns["TNAME"]])
@@ -317,9 +312,18 @@ def _read_datalog(
     dut_sn = dut_names[0] if dut_names else "UNKNOWN"
     if len(dut_names) > 1:
         dut_sn = "; ".join(dut_names)
+    if not labels:
+        raise CoverageError(
+            f"{path} does not contain a value in TCOND=CONFIG_SEQ_FROM_CSV."
+        )
+    if len(labels) > 1:
+        raise CoverageError(
+            f"{path} contains multiple TCOND=CONFIG_SEQ_FROM_CSV labels: "
+            f"{', '.join(labels)}."
+        )
     if not sequence_path:
         raise CoverageError(f"{path} does not declare a SEQUENCE_FILE path.")
-    return dut_sn, sequence_path, seen
+    return dut_sn, sequence_path, labels[0], seen
 
 
 def _resolve_configuration_path(datalog_path: Path, sequence_path: str) -> Path:
@@ -414,38 +418,30 @@ def _evaluate_label(
     )
 
 
-def _select_labels(evaluations: tuple[CoverageLabelResult, ...]) -> tuple[str, ...]:
-    if not evaluations:
-        return ()
-    best_ratio = max(evaluation.coverage_ratio for evaluation in evaluations)
-    return tuple(
-        evaluation.label
-        for evaluation in evaluations
-        if evaluation.coverage_ratio == best_ratio
-    )
-
-
 def scan_coverage_file(
     path: Path,
     display_name: str,
     mapping: TestNameMapping,
 ) -> CoverageResult:
-    """Compare one datalog against every label in its sequence configuration."""
-    dut_sn, sequence_path, seen = _read_datalog(path)
+    """Compare a datalog against the label declared in its own rows."""
+    dut_sn, sequence_path, datalog_label, seen = _read_datalog(path)
     configuration_path = _resolve_configuration_path(path, sequence_path)
     requirements_by_label = _read_sequence_configuration(configuration_path, mapping)
-    evaluations = tuple(
-        _evaluate_label(label, requirements, seen)
-        for label, requirements in sorted(requirements_by_label.items())
-    )
-    selected_labels = _select_labels(evaluations)
+    try:
+        requirements = requirements_by_label[datalog_label]
+    except KeyError as error:
+        raise CoverageError(
+            f"Datalog label '{datalog_label}' was not found in "
+            f"sequence configuration CSV '{configuration_path}'."
+        ) from error
+    evaluation = _evaluate_label(datalog_label, requirements, seen)
     return CoverageResult(
         dut_sn=dut_sn,
         csv_file=display_name,
         sequence_path=sequence_path,
         configuration_path=str(configuration_path),
-        selected_labels=selected_labels,
-        evaluations=evaluations,
+        selected_labels=(datalog_label,),
+        evaluations=(evaluation,),
     )
 
 

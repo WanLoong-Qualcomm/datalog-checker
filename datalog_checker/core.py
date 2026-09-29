@@ -212,7 +212,22 @@ def scan_temperature_file(
     display_name: str,
     tolerance: float = 10.0,
     strict: bool = False,
+    measurement_names: Iterable[str] | None = None,
 ) -> list[TemperatureFailure]:
+    raw_names: Iterable[str] = (
+        (TEMPERATURE_NAME,) if measurement_names is None else measurement_names
+    )
+    configured_names_list: list[str] = []
+    for name in raw_names:
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("Temperature measurement names must be non-empty strings.")
+        normalized_name = name.strip().upper()
+        if normalized_name not in configured_names_list:
+            configured_names_list.append(normalized_name)
+    configured_names = tuple(configured_names_list)
+    if not configured_names:
+        raise ValueError("At least one temperature measurement name is required.")
+
     with path.open("r", newline="", encoding="utf-8-sig", errors="replace") as handle:
         reader = csv.reader(handle)
 
@@ -240,7 +255,7 @@ def scan_temperature_file(
             required_index = max(dut_index, name_index, data_index)
             if len(row) <= required_index:
                 continue
-            if row[name_index].strip().upper() != TEMPERATURE_NAME:
+            if row[name_index].strip().upper() not in configured_names:
                 continue
 
             value = _parse_number(row[data_index])
@@ -268,6 +283,7 @@ def scan_temperature_file(
             grouped[(dut_sn, display_name, sequence_path)].append(measurement)
 
     if not grouped:
+        configured_text = ", ".join(configured_names)
         return [
             TemperatureFailure(
                 dut_sn="UNKNOWN",
@@ -276,7 +292,7 @@ def scan_temperature_file(
                 strict=strict,
                 measurements=(),
                 out_of_spec=(),
-                reason=f"No {TEMPERATURE_NAME} measurements were found.",
+                reason=f"No configured temperature measurements ({configured_text}) were found.",
             )
         ]
 
@@ -369,17 +385,9 @@ def flagged_dut_names(
 def _coverage_report_results(
     results: Iterable[CoverageResult],
 ) -> Iterable[CoverageResult]:
-    """Expand tied coverage results when their coverage details differ."""
+    """Return coverage results for report generation."""
     for result in results:
-        for group in result.selected_evaluation_groups:
-            yield CoverageResult(
-                dut_sn=result.dut_sn,
-                csv_file=result.csv_file,
-                sequence_path=result.sequence_path,
-                configuration_path=result.configuration_path,
-                selected_labels=group.labels,
-                evaluations=(group.evaluation,),
-            )
+        yield result
 
 
 def write_csv_report(
@@ -530,8 +538,7 @@ def write_csv_report(
         if not selected_evaluations:
             continue
         evaluation = selected_evaluations[0]
-        candidate_labels = "; ".join(result.selected_labels)
-        coverage_warning = result.ambiguity_warning or ""
+        selected_label = result.selected_labels[0]
         report_gaps = result.gaps or (None,)
         for gap in report_gaps:
             rows.append(
@@ -563,15 +570,15 @@ def write_csv_report(
                         "",
                         "Coverage gap" if gap else "Coverage complete",
                         result.configuration_path,
-                        candidate_labels,
-                        candidate_labels,
+                        selected_label,
+                        selected_label,
                         evaluation.covered_count,
                         evaluation.required_count,
                         f"{float(evaluation.coverage_ratio):.6f}",
                         gap.main_script_key if gap else "",
                         gap.gain_modes_text if gap else "",
                         gap.tests_text if gap else "",
-                        coverage_warning,
+                        "",
                     ],
                 )
             )
@@ -756,18 +763,14 @@ def write_markdown_report(
                     report_coverage_results = list(
                         _coverage_report_results([coverage_result])
                     )
-                    for index, result in enumerate(report_coverage_results):
+                    for result in report_coverage_results:
                         selected_evaluations = result.selected_evaluations
                         if not selected_evaluations:
                             continue
                         evaluation = selected_evaluations[0]
                         lines.append("Coverage failures:")
-                        if index == 0 and coverage_result.ambiguity_warning:
-                            lines.append(
-                                f"Warning: {coverage_result.ambiguity_warning}"
-                            )
                         lines.append(
-                            f"- Candidate label(s): {', '.join(result.selected_labels)}"
+                            f"- Label: {result.selected_labels[0]}"
                         )
                         lines.append(
                             f"- Coverage: {evaluation.covered_count}/"
@@ -776,8 +779,7 @@ def write_markdown_report(
                         )
                         for gap in result.gaps:
                             lines.append(gap.copy_text)
-                        if index + 1 < len(report_coverage_results):
-                            lines.append("")
+
                 lines.append("")
         lines.append("The combined CSV report contains the same findings in machine-readable form.")
         lines.append("")
@@ -810,12 +812,8 @@ def write_markdown_report(
                 lines.append("")
                 for result in _coverage_report_results([coverage_result]):
                     lines.append(
-                        f"Candidate label(s): {', '.join(result.selected_labels)}"
+                        f"Label: {result.selected_labels[0]}"
                     )
-                    if coverage_result.ambiguity_warning:
-                        lines.append(
-                            f"Warning: {coverage_result.ambiguity_warning}"
-                        )
                     selected_evaluations = result.selected_evaluations
                     if selected_evaluations:
                         evaluation = selected_evaluations[0]

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import queue
+import sys
 import threading
 import tkinter as tk
 from pathlib import Path
@@ -14,7 +15,11 @@ from datalog_checker.config import (
     parse_temperature_tolerance,
 )
 from datalog_checker.coverage import CoverageResult, scan_coverage_file
-from datalog_checker.coverage_config import TestNameMapping, load_test_name_mapping
+from datalog_checker.coverage_config import (
+    TestNameMapping,
+    load_temperature_measurement_names,
+    load_test_name_mapping,
+)
 from datalog_checker.core import (
     NegativeGain,
     PortFailure,
@@ -28,12 +33,148 @@ from datalog_checker.core import (
 )
 
 
+QUALCOMM_RED = "#D71920"
+QUALCOMM_RED_DARK = "#A91218"
+QUALCOMM_RED_LIGHT = "#FDEBEC"
+CHARCOAL = "#263238"
+MUTED_TEXT = "#667085"
+APP_BACKGROUND = "#F4F6F8"
+PANEL_BACKGROUND = "#FFFFFF"
+BORDER = "#D9DEE5"
+DISABLED = "#B7BEC2"
+WHITE = "#FFFFFF"
+
+
+def resource_path(relative_path: str) -> Path:
+    """Resolve a bundled resource in source and PyInstaller builds."""
+    if getattr(sys, "frozen", False):
+        base_path = Path(getattr(sys, "_MEIPASS"))
+    else:
+        base_path = Path(__file__).resolve().parent.parent
+    return base_path / relative_path
+
+
+class RoundedButton(tk.Canvas):
+    """A compact, theme-independent rounded button for the primary action."""
+
+    def __init__(
+        self,
+        master: tk.Misc,
+        text: str,
+        command: object,
+        **kwargs: object,
+    ) -> None:
+        self._button_text = text
+        self._command = command
+        self._button_state = "normal"
+        self._hovered = False
+        self._button_width = 232
+        self._button_height = 44
+        super().__init__(
+            master,
+            width=self._button_width,
+            height=self._button_height,
+            background=APP_BACKGROUND,
+            borderwidth=0,
+            highlightthickness=0,
+            **kwargs,
+        )
+        self.bind("<Enter>", self._on_enter)
+        self.bind("<Leave>", self._on_leave)
+        self.bind("<Button-1>", self._on_click)
+        self.bind("<Return>", self._on_click)
+        self.bind("<space>", self._on_click)
+        self._draw()
+
+    def configure(self, cnf: dict[str, object] | None = None, **kwargs: object):
+        state = kwargs.pop("state", None)
+        if state is not None:
+            self._button_state = str(state)
+            self._hovered = False
+            self._draw()
+        return super().configure(cnf, **kwargs)
+
+    config = configure
+
+    def _on_enter(self, _event: tk.Event) -> None:
+        if self._button_state == "normal":
+            self._hovered = True
+            self._draw()
+
+    def _on_leave(self, _event: tk.Event) -> None:
+        if self._hovered:
+            self._hovered = False
+            self._draw()
+
+    def _on_click(self, _event: tk.Event) -> str:
+        if self._button_state == "normal" and callable(self._command):
+            self.focus_set()
+            self._command()
+        return "break"
+
+    def _draw(self) -> None:
+        self.delete("all")
+        if self._button_state == "disabled":
+            fill = DISABLED
+            text_color = WHITE
+        elif self._hovered:
+            fill = QUALCOMM_RED
+            text_color = WHITE
+        else:
+            fill = QUALCOMM_RED_DARK
+            text_color = WHITE
+
+        left, top = 2, 2
+        right, bottom = self._button_width - 2, self._button_height - 2
+        radius = 12
+        self.create_rectangle(
+            left + radius,
+            top,
+            right - radius,
+            bottom,
+            fill=fill,
+            outline=fill,
+        )
+        self.create_rectangle(
+            left,
+            top + radius,
+            right,
+            bottom - radius,
+            fill=fill,
+            outline=fill,
+        )
+        for x1, y1 in (
+            (left, top),
+            (right - 2 * radius, top),
+            (left, bottom - 2 * radius),
+            (right - 2 * radius, bottom - 2 * radius),
+        ):
+            self.create_oval(
+                x1,
+                y1,
+                x1 + 2 * radius,
+                y1 + 2 * radius,
+                fill=fill,
+                outline=fill,
+            )
+        self.create_text(
+            self._button_width / 2,
+            self._button_height / 2,
+            text=self._button_text,
+            fill=text_color,
+            font=("Segoe UI", 10, "bold"),
+        )
+
+
 class DatalogCheckerApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("Datalog Checker")
-        self.geometry("900x560")
-        self.minsize(680, 420)
+        self.geometry("920x600")
+        self.minsize(700, 460)
+        self.configure(background=APP_BACKGROUND)
+        self._configure_styles()
+        self._set_application_icon()
 
         self.check_settings = default_check_settings()
         self.selected_files: list[Path] = []
@@ -51,30 +192,80 @@ class DatalogCheckerApp(tk.Tk):
         self.temperature_strict_button: ttk.Checkbutton | None = None
         self.temperature_tolerance_entry: ttk.Entry | None = None
         self.result_queue: queue.Queue[tuple[str, object]] = queue.Queue()
-        self.run_button: ttk.Button
+        self.run_button: RoundedButton
         self.status_var = tk.StringVar(value="Add one or more CSV files to begin.")
         self.count_var = tk.StringVar(value="0 files selected")
 
         self._build_ui()
 
+    def _configure_styles(self) -> None:
+        style = ttk.Style(self)
+        try:
+            style.theme_use("vista")
+        except tk.TclError:
+            pass
+        style.configure("TFrame", background=APP_BACKGROUND)
+        style.configure("TLabel", background=APP_BACKGROUND, foreground=CHARCOAL)
+        style.configure(
+            "Muted.TLabel",
+            background=APP_BACKGROUND,
+            foreground=MUTED_TEXT,
+        )
+        style.configure(
+            "TLabelframe",
+            background=APP_BACKGROUND,
+            bordercolor=BORDER,
+        )
+        style.configure(
+            "TLabelframe.Label",
+            background=APP_BACKGROUND,
+            foreground=CHARCOAL,
+            font=("Segoe UI", 10, "bold"),
+        )
+        style.configure("TCheckbutton", background=APP_BACKGROUND, foreground=CHARCOAL)
+        style.configure("TEntry", padding=(7, 5), fieldbackground=PANEL_BACKGROUND)
+        style.configure("TButton", padding=(10, 6))
+        style.configure(
+            "Help.TButton",
+            foreground=QUALCOMM_RED,
+            font=("Segoe UI", 9, "bold"),
+            padding=(2, 1),
+        )
+
+    def _set_application_icon(self) -> None:
+        try:
+            self.iconbitmap(str(resource_path("assets/datalog_checker.ico")))
+        except tk.TclError:
+            pass
+
     def _build_ui(self) -> None:
         outer = ttk.Frame(self, padding=16)
         outer.pack(fill="both", expand=True)
         outer.columnconfigure(0, weight=1)
-        outer.rowconfigure(3, weight=1)
+        outer.rowconfigure(2, weight=1)
 
-        ttk.Label(
-            outer,
+        header = tk.Frame(outer, background=QUALCOMM_RED, padx=18, pady=14)
+        header.grid(row=0, column=0, sticky="ew", pady=(0, 14))
+        header.columnconfigure(0, weight=1)
+        tk.Label(
+            header,
             text="Datalog Checker",
-            font=("Segoe UI", 16, "bold"),
+            background=QUALCOMM_RED,
+            foreground=WHITE,
+            font=("Segoe UI", 17, "bold"),
+            anchor="w",
         ).grid(row=0, column=0, sticky="w")
-        ttk.Label(
-            outer,
-            text="Select CSV files, run the scan, and choose where to save the reports.",
-        ).grid(row=1, column=0, sticky="w", pady=(4, 12))
+        tk.Label(
+            header,
+            text="Verify gain, temperature, and coverage results from datalogs.",
+            background=QUALCOMM_RED,
+            foreground=QUALCOMM_RED_LIGHT,
+            font=("Segoe UI", 10),
+            anchor="w",
+        ).grid(row=1, column=0, sticky="w", pady=(3, 0))
 
         checks_area = ttk.LabelFrame(outer, text="Checks", padding=8)
-        checks_area.grid(row=2, column=0, sticky="ew", pady=(0, 12))
+        checks_area.grid(row=1, column=0, sticky="ew", pady=(0, 12))
         checks_area.columnconfigure(0, weight=1)
         ttk.Label(
             checks_area,
@@ -86,6 +277,8 @@ class DatalogCheckerApp(tk.Tk):
         check_canvas = tk.Canvas(
             check_list_container,
             height=100,
+            background=APP_BACKGROUND,
+            borderwidth=0,
             highlightthickness=0,
         )
         check_scrollbar = ttk.Scrollbar(
@@ -123,12 +316,9 @@ class DatalogCheckerApp(tk.Tk):
             ):
                 check_var = tk.BooleanVar(value=check_settings.enabled)
                 self.check_vars[name] = check_var
-                check_label = (
-                    "Coverage (BETA - UNSTABLE)" if name == "Coverage" else name
-                )
                 ttk.Checkbutton(
                     check_rows,
-                    text=check_label,
+                    text=name,
                     variable=check_var,
                     command=(
                         self.update_gain_threshold_state
@@ -153,14 +343,27 @@ class DatalogCheckerApp(tk.Tk):
                         row=row_number, column=3, sticky="w", pady=1
                     )
                 elif name == "Temperature":
+                    strict_frame = ttk.Frame(check_rows)
+                    strict_frame.grid(
+                        row=row_number,
+                        column=1,
+                        sticky="w",
+                        padx=(8, 8),
+                        pady=1,
+                    )
                     self.temperature_strict_button = ttk.Checkbutton(
-                        check_rows,
+                        strict_frame,
                         text="Strict",
                         variable=self.temperature_strict_var,
                     )
-                    self.temperature_strict_button.grid(
-                        row=row_number, column=1, sticky="w", padx=(8, 8), pady=1
-                    )
+                    self.temperature_strict_button.pack(side="left")
+                    ttk.Button(
+                        strict_frame,
+                        text="?",
+                        width=2,
+                        style="Help.TButton",
+                        command=self.show_temperature_strict_help,
+                    ).pack(side="left", padx=(5, 0))
                     tolerance_frame = ttk.Frame(check_rows)
                     tolerance_frame.grid(
                         row=row_number, column=2, sticky="e", padx=(8, 8), pady=1
@@ -191,8 +394,8 @@ class DatalogCheckerApp(tk.Tk):
         if self.temperature_tolerance_entry is not None:
             self.update_temperature_options_state()
 
-        file_area = ttk.LabelFrame(outer, text="CSV files", padding=8)
-        file_area.grid(row=3, column=0, sticky="nsew")
+        file_area = ttk.LabelFrame(outer, text="Datalog files", padding=8)
+        file_area.grid(row=2, column=0, sticky="nsew")
         file_area.columnconfigure(0, weight=1)
         file_area.rowconfigure(1, weight=1)
 
@@ -213,6 +416,8 @@ class DatalogCheckerApp(tk.Tk):
         self.remove_canvas = tk.Canvas(
             list_container, width=40, highlightthickness=0
         )
+        self.file_canvas.configure(background=PANEL_BACKGROUND, borderwidth=0)
+        self.remove_canvas.configure(background=PANEL_BACKGROUND, borderwidth=0)
         vertical_scrollbar = ttk.Scrollbar(
             list_container, orient="vertical", command=self.scroll_vertical
         )
@@ -254,13 +459,18 @@ class DatalogCheckerApp(tk.Tk):
         self.file_canvas.bind_all("<MouseWheel>", self.mousewheel)
 
         bottom = ttk.Frame(outer)
-        bottom.grid(row=4, column=0, sticky="ew", pady=(12, 0))
+        bottom.grid(row=3, column=0, sticky="ew", pady=(12, 0))
         bottom.columnconfigure(0, weight=1)
-        ttk.Label(bottom, textvariable=self.status_var).grid(row=0, column=0, sticky="w")
-        self.run_button = ttk.Button(
+        ttk.Label(
+            bottom,
+            textvariable=self.status_var,
+            style="Muted.TLabel",
+        ).grid(row=0, column=0, sticky="w")
+        self.run_button = RoundedButton(
             bottom,
             text="Run scan and save reports",
             command=self.run_scan,
+            cursor="hand2",
         )
         self.run_button.grid(row=0, column=1, sticky="e")
         self.refresh_file_list()
@@ -283,6 +493,14 @@ class DatalogCheckerApp(tk.Tk):
             self.temperature_strict_button.configure(state=state)
         if self.temperature_tolerance_entry is not None:
             self.temperature_tolerance_entry.configure(state=state)
+
+    def show_temperature_strict_help(self) -> None:
+        messagebox.showinfo(
+            "Strict temperature mode",
+            "Strict requires every temperature reading to pass. "
+            "When Strict is off, at least one reading must pass.",
+            parent=self,
+        )
 
     def add_files(self) -> None:
         filenames = filedialog.askopenfilenames(
@@ -404,12 +622,16 @@ class DatalogCheckerApp(tk.Tk):
 
         coverage_enabled = self.check_vars["Coverage"].get()
         coverage_mapping: TestNameMapping | None = None
-        if coverage_enabled:
+        temperature_measurement_names: tuple[str, ...] | None = None
+        if coverage_enabled or temperature_enabled:
             try:
-                coverage_mapping = load_test_name_mapping()
+                if coverage_enabled:
+                    coverage_mapping = load_test_name_mapping()
+                if temperature_enabled:
+                    temperature_measurement_names = load_temperature_measurement_names()
             except (OSError, ValueError) as error:
                 messagebox.showerror(
-                    "Invalid coverage configuration",
+                    "Invalid runtime configuration",
                     str(error),
                     parent=self,
                 )
@@ -427,6 +649,7 @@ class DatalogCheckerApp(tk.Tk):
                 temperature_enabled,
                 temperature_tolerance,
                 self.temperature_strict_var.get(),
+                temperature_measurement_names,
                 coverage_enabled,
                 coverage_mapping,
             ),
@@ -442,6 +665,7 @@ class DatalogCheckerApp(tk.Tk):
         temperature_enabled: bool,
         temperature_tolerance: float,
         temperature_strict: bool,
+        temperature_measurement_names: tuple[str, ...] | None,
         coverage_enabled: bool,
         coverage_mapping: TestNameMapping | None,
     ) -> None:
@@ -462,6 +686,7 @@ class DatalogCheckerApp(tk.Tk):
                             str(path),
                             temperature_tolerance,
                             temperature_strict,
+                            temperature_measurement_names,
                         )
                     )
                 if coverage_enabled and coverage_mapping is not None:

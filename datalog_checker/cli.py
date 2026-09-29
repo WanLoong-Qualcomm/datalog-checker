@@ -9,7 +9,10 @@ from pathlib import Path
 
 from datalog_checker.config import load_settings
 from datalog_checker.coverage import CoverageResult, scan_coverage_file
-from datalog_checker.coverage_config import load_test_name_mapping
+from datalog_checker.coverage_config import (
+    load_temperature_measurement_names,
+    load_test_name_mapping,
+)
 from datalog_checker.core import (
     NegativeGain,
     TemperatureFailure,
@@ -65,10 +68,13 @@ def main() -> int:
     )
     coverage_settings = settings.checks.get("Coverage")
     coverage_enabled = coverage_settings is not None and coverage_settings.enabled
+    temperature_measurement_names: tuple[str, ...] | None = None
     try:
         coverage_mapping = load_test_name_mapping() if coverage_enabled else None
+        if temperature_enabled:
+            temperature_measurement_names = load_temperature_measurement_names()
     except (OSError, ValueError) as error:
-        print(f"Error reading coverage config: {error}", file=sys.stderr)
+        print(f"Error reading runtime config: {error}", file=sys.stderr)
         return 2
 
     all_results: list[NegativeGain] = []
@@ -88,6 +94,7 @@ def main() -> int:
                         display_name,
                         settings.temperature_tolerance,
                         settings.temperature_strict,
+                        temperature_measurement_names,
                     )
                 )
             if coverage_enabled and coverage_mapping is not None:
