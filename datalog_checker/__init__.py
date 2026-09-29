@@ -9,6 +9,21 @@ from datalog_checker.config import (
     parse_gain_threshold,
     parse_temperature_tolerance,
 )
+from datalog_checker.coverage import (
+    CoverageError,
+    CoverageEvaluationGroup,
+    CoverageGap,
+    CoverageLabelResult,
+    CoverageResult,
+    coverage_failures,
+    scan_coverage_file,
+)
+from datalog_checker.coverage_config import (
+    CoverageConfigError,
+    TestNameMapping,
+    default_coverage_config_path,
+    load_test_name_mapping,
+)
 from datalog_checker.core import (
     NegativeGain,
     PortFailure,
@@ -27,20 +42,31 @@ from datalog_checker.core import (
 
 __all__ = [
     "CheckSettings",
+    "CoverageConfigError",
+    "CoverageError",
+    "CoverageEvaluationGroup",
+    "CoverageGap",
+    "CoverageLabelResult",
+    "CoverageResult",
     "NegativeGain",
     "PortFailure",
     "Settings",
     "TemperatureFailure",
     "TemperatureMeasurement",
+    "TestNameMapping",
+    "coverage_failures",
     "default_check_settings",
+    "default_coverage_config_path",
     "flagged_dut_names",
     "format_input_port",
     "group_by_dut",
     "load_manifest",
     "load_settings",
+    "load_test_name_mapping",
     "parse_gain_threshold",
     "parse_temperature_tolerance",
     "scan_file",
+    "scan_coverage_file",
     "scan_temperature_file",
     "summarize_port_failures",
     "write_csv_report",

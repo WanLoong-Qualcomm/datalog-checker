@@ -5,7 +5,7 @@ a = Analysis(
     ['datalog_checker/gui.py'],
     pathex=['.'],
     binaries=[],
-    datas=[],
+    datas=[('config.json', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

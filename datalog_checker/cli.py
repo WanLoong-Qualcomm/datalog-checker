@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 
 from datalog_checker.config import load_settings
+from datalog_checker.coverage import CoverageResult, scan_coverage_file
+from datalog_checker.coverage_config import load_test_name_mapping
 from datalog_checker.core import (
     NegativeGain,
     TemperatureFailure,
@@ -61,10 +63,19 @@ def main() -> int:
     temperature_enabled = (
         temperature_settings is not None and temperature_settings.enabled
     )
+    coverage_settings = settings.checks.get("Coverage")
+    coverage_enabled = coverage_settings is not None and coverage_settings.enabled
+    try:
+        coverage_mapping = load_test_name_mapping() if coverage_enabled else None
+    except (OSError, ValueError) as error:
+        print(f"Error reading coverage config: {error}", file=sys.stderr)
+        return 2
+
     all_results: list[NegativeGain] = []
     scanned_files: list[Path] = []
     errors: list[str] = []
     temperature_failures: list[TemperatureFailure] = []
+    coverage_results: list[CoverageResult] = []
     for path in file_paths:
         display_name = display_path(path, args.manifest)
         try:
@@ -78,6 +89,10 @@ def main() -> int:
                         settings.temperature_tolerance,
                         settings.temperature_strict,
                     )
+                )
+            if coverage_enabled and coverage_mapping is not None:
+                coverage_results.append(
+                    scan_coverage_file(path, display_name, coverage_mapping)
                 )
             scanned_files.append(path)
         except (OSError, ValueError) as error:
@@ -93,17 +108,27 @@ def main() -> int:
         port_failures,
         errors,
         temperature_failures,
+        coverage_results,
     )
-    write_csv_report(args.csv_report, port_failures, temperature_failures)
+    write_csv_report(
+        args.csv_report,
+        port_failures,
+        temperature_failures,
+        coverage_results,
+    )
 
     print(f"Scanned {len(scanned_files)} file(s).")
     print(f"Found {len(all_results)} low gain row(s).")
     print(
         f"DUTs flagged: "
-        f"{len(flagged_dut_names(all_results, temperature_failures))}"
+        f"{len(flagged_dut_names(all_results, temperature_failures, coverage_results))}"
     )
     print(f"Input port failure rows: {len(port_failures)}")
     print(f"Temperature failure cases: {len(temperature_failures)}")
+    print(
+        f"Coverage failure cases: "
+        f"{sum(bool(result.gaps) for result in coverage_results)}"
+    )
     print(f"Markdown report: {args.report}")
     print(f"CSV report: {args.csv_report}")
     if errors:

@@ -1,0 +1,17 @@
+{
+  "tests_to_tnames": {
+    "GAIN": [
+      "GAIN_I",
+      "GAIN_Q"
+    ],
+    "SSNFWSPURREMOVAL": [
+      "SSNFWSPURREMOVAL_I+JQ"
+    ],
+    "NF_YFACTOR" : [
+      "SSNF-FIRSTRBWSPURREMOVAL_I+JQ"
+    ],
+    "NF_GAINMETHOD" : [
+      "SSNF-FIRSTRBWSPURREMOVAL_I+JQ"
+    ]
+  }
+}

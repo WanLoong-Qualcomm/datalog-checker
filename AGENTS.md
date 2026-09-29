@@ -14,5 +14,6 @@
 - Every functional change must remain consistent in both configuration paths: the GUI configurator and the JSON-based configurator.
 - Keep validation, defaults, field names, supported values, and resulting behavior synchronized between both paths.
 - The JSON configurator uses `JUI.json` as its JSON user interface; it is an alternative interface to the GUI, not a GUI runtime dependency. Keep its validation and behavior consistent with the GUI.
+- Coverage TESTS-to-TNAME mappings live in `config.json`; the GUI and JUI-driven CLI must use the same mapping.
 - When changing configuration behavior, test both GUI-driven and JSON-driven flows.
 - After any GUI change, recompile the application and verify the resulting build.

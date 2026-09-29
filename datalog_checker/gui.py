@@ -13,6 +13,8 @@ from datalog_checker.config import (
     parse_gain_threshold,
     parse_temperature_tolerance,
 )
+from datalog_checker.coverage import CoverageResult, scan_coverage_file
+from datalog_checker.coverage_config import TestNameMapping, load_test_name_mapping
 from datalog_checker.core import (
     NegativeGain,
     PortFailure,
@@ -121,9 +123,12 @@ class DatalogCheckerApp(tk.Tk):
             ):
                 check_var = tk.BooleanVar(value=check_settings.enabled)
                 self.check_vars[name] = check_var
+                check_label = (
+                    "Coverage (BETA - UNSTABLE)" if name == "Coverage" else name
+                )
                 ttk.Checkbutton(
                     check_rows,
-                    text=name,
+                    text=check_label,
                     variable=check_var,
                     command=(
                         self.update_gain_threshold_state
@@ -397,6 +402,19 @@ class DatalogCheckerApp(tk.Tk):
             )
             return
 
+        coverage_enabled = self.check_vars["Coverage"].get()
+        coverage_mapping: TestNameMapping | None = None
+        if coverage_enabled:
+            try:
+                coverage_mapping = load_test_name_mapping()
+            except (OSError, ValueError) as error:
+                messagebox.showerror(
+                    "Invalid coverage configuration",
+                    str(error),
+                    parent=self,
+                )
+                return
+
         self.run_button.configure(state="disabled")
         self.status_var.set("Scanning files...")
         paths = tuple(self.selected_files)
@@ -409,6 +427,8 @@ class DatalogCheckerApp(tk.Tk):
                 temperature_enabled,
                 temperature_tolerance,
                 self.temperature_strict_var.get(),
+                coverage_enabled,
+                coverage_mapping,
             ),
             daemon=True,
         ).start()
@@ -422,9 +442,12 @@ class DatalogCheckerApp(tk.Tk):
         temperature_enabled: bool,
         temperature_tolerance: float,
         temperature_strict: bool,
+        coverage_enabled: bool,
+        coverage_mapping: TestNameMapping | None,
     ) -> None:
         results: list[NegativeGain] = []
         temperature_failures: list[TemperatureFailure] = []
+        coverage_results: list[CoverageResult] = []
         scanned_files: list[Path] = []
         errors: list[str] = []
 
@@ -441,6 +464,10 @@ class DatalogCheckerApp(tk.Tk):
                             temperature_strict,
                         )
                     )
+                if coverage_enabled and coverage_mapping is not None:
+                    coverage_results.append(
+                        scan_coverage_file(path, str(path), coverage_mapping)
+                    )
                 scanned_files.append(path)
             except (OSError, ValueError) as error:
                 errors.append(f"`{path}`: {error}")
@@ -450,7 +477,14 @@ class DatalogCheckerApp(tk.Tk):
         self.result_queue.put(
             (
                 "done",
-                (scanned_files, results, failures, temperature_failures, errors),
+                (
+                    scanned_files,
+                    results,
+                    failures,
+                    temperature_failures,
+                    coverage_results,
+                    errors,
+                ),
             )
         )
 
@@ -462,12 +496,20 @@ class DatalogCheckerApp(tk.Tk):
             return
 
         if message_type == "done":
-            scanned_files, results, failures, temperature_failures, errors = payload  # type: ignore[misc]
+            (
+                scanned_files,
+                results,
+                failures,
+                temperature_failures,
+                coverage_results,
+                errors,
+            ) = payload  # type: ignore[misc]
             self.save_reports(
                 scanned_files,
                 results,
                 failures,
                 temperature_failures,
+                coverage_results,
                 errors,
             )
 
@@ -477,6 +519,7 @@ class DatalogCheckerApp(tk.Tk):
         results: list[NegativeGain],
         failures: list[PortFailure],
         temperature_failures: list[TemperatureFailure],
+        coverage_results: list[CoverageResult],
         errors: list[str],
     ) -> None:
         self.run_button.configure(state="normal")
@@ -501,8 +544,14 @@ class DatalogCheckerApp(tk.Tk):
                 failures,
                 errors,
                 temperature_failures,
+                coverage_results,
             )
-            write_csv_report(csv_path, failures, temperature_failures)
+            write_csv_report(
+                csv_path,
+                failures,
+                temperature_failures,
+                coverage_results,
+            )
         except OSError as error:
             self.status_var.set("Could not save the reports.")
             messagebox.showerror("Save failed", str(error), parent=self)
@@ -512,9 +561,12 @@ class DatalogCheckerApp(tk.Tk):
         summary = (
             f"Scanned files: {len(scanned_files)}\n"
             f"Low gain rows: {len(results)}\n"
-            f"DUTs flagged: {len(flagged_dut_names(results, temperature_failures))}\n"
+            f"DUTs flagged: "
+            f"{len(flagged_dut_names(results, temperature_failures, coverage_results))}\n"
             f"Input port failure rows: {len(failures)}\n\n"
             f"Temperature failure cases: {len(temperature_failures)}\n\n"
+            f"Coverage failure cases: "
+            f"{sum(bool(result.gaps) for result in coverage_results)}\n\n"
             f"Saved:\n{markdown_path}\n{csv_path}"
         )
         if errors:
