@@ -2,8 +2,8 @@
 
 
 a = Analysis(
-    ['gain_retest_gui.py'],
-    pathex=[],
+    ['datalog_checker/gui.py'],
+    pathex=['.'],
     binaries=[],
     datas=[],
     hiddenimports=[],
@@ -22,7 +22,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='GainRetestChecker',
+    name='DatalogChecker',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

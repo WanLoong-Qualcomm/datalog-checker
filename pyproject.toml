@@ -1,8 +1,20 @@
 [project]
-name = "gain-retest-checker"
+name = "datalog-checker"
 version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = []
+
+[project.scripts]
+datalog-checker = "datalog_checker.cli:main"
+datalog-checker-gui = "datalog_checker.gui:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["datalog_checker*"]
 
 [dependency-groups]
 dev = [

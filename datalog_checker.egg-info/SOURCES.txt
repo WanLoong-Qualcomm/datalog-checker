@@ -1,0 +1,14 @@
+pyproject.toml
+datalog_checker/__init__.py
+datalog_checker/__main__.py
+datalog_checker/cli.py
+datalog_checker/config.py
+datalog_checker/core.py
+datalog_checker/gui.py
+datalog_checker.egg-info/PKG-INFO
+datalog_checker.egg-info/SOURCES.txt
+datalog_checker.egg-info/dependency_links.txt
+datalog_checker.egg-info/entry_points.txt
+datalog_checker.egg-info/top_level.txt
+tests/test_config.py
+tests/test_core.py

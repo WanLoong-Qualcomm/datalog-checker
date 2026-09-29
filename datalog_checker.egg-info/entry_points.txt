@@ -1,0 +1,3 @@
+[console_scripts]
+datalog-checker = datalog_checker.cli:main
+datalog-checker-gui = datalog_checker.gui:main
