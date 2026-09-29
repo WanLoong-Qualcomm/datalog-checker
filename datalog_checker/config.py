@@ -8,6 +8,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+COVERAGE_CHECK_NAME = "Coverage (Lite)"
+LEGACY_COVERAGE_CHECK_NAME = "Coverage"
+
 
 @dataclass(frozen=True)
 class CheckSettings:
@@ -21,6 +24,7 @@ class CheckSettings:
 class Settings:
     checks: dict[str, CheckSettings]
     files: tuple[Path, ...]
+    outputs_directory: Path | None = None
 
     @property
     def gain_threshold(self) -> float:
@@ -46,7 +50,7 @@ def default_check_settings() -> dict[str, CheckSettings]:
     return {
         "Gain": CheckSettings(enabled=True, threshold=0.0),
         "Temperature": CheckSettings(enabled=False, strict=False, tolerance=10.0),
-        "Coverage": CheckSettings(enabled=False),
+        COVERAGE_CHECK_NAME: CheckSettings(enabled=False),
     }
 
 
@@ -144,6 +148,23 @@ def load_manifest(manifest_path: Path) -> list[Path]:
     return _paths_from_manifest(_read_json(manifest_path), manifest_path)
 
 
+def _load_outputs_directory(raw_settings: dict[str, Any], settings_path: Path) -> Path | None:
+    raw_directory = raw_settings.get("outputs_directory")
+    if raw_directory is None:
+        # Accept the misspelled field from the previous working configuration
+        # while using the corrected name for all new manifests.
+        raw_directory = raw_settings.get("outputs_dirctory")
+    if raw_directory is None or raw_directory == "":
+        return None
+    if not isinstance(raw_directory, str) or not raw_directory.strip():
+        raise ValueError(f"{settings_path} 'outputs_directory' must be a path string.")
+
+    output_path = Path(raw_directory)
+    if not output_path.is_absolute():
+        output_path = settings_path.parent / output_path
+    return output_path
+
+
 def _load_checks(
     raw_checks: Any,
     settings_path: Path,
@@ -164,7 +185,12 @@ def _load_checks(
         raise ValueError(f"{settings_path} 'checks' must be a JSON object.")
 
     checks: dict[str, CheckSettings] = {}
-    for name, raw_check in check_items:
+    for raw_name, raw_check in check_items:
+        name = (
+            COVERAGE_CHECK_NAME
+            if raw_name == LEGACY_COVERAGE_CHECK_NAME
+            else raw_name
+        )
         if not isinstance(name, str) or not name.strip():
             raise ValueError(f"{settings_path} contains an invalid check name.")
         if name in checks:
@@ -246,4 +272,9 @@ def load_settings(settings_path: Path) -> Settings:
         legacy_gain_threshold,
     )
     files = tuple(_paths_from_manifest(raw_settings, settings_path))
-    return Settings(checks=checks, files=files)
+    outputs_directory = _load_outputs_directory(raw_settings, settings_path)
+    return Settings(
+        checks=checks,
+        files=files,
+        outputs_directory=outputs_directory,
+    )

@@ -6,6 +6,7 @@ import csv
 import math
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Iterable
 
@@ -105,6 +106,12 @@ def display_path(path: Path, manifest_path: Path) -> str:
         return str(path.relative_to(manifest_path.parent))
     except ValueError:
         return str(path)
+
+
+def timestamped_report_path(path: Path) -> Path:
+    """Prefix a report filename with a filesystem-safe local timestamp."""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return path.with_name(f"{timestamp}_{path.name}")
 
 
 def scan_file(
@@ -382,253 +389,6 @@ def flagged_dut_names(
     return names
 
 
-def _coverage_report_results(
-    results: Iterable[CoverageResult],
-) -> Iterable[CoverageResult]:
-    """Return coverage results for report generation."""
-    for result in results:
-        yield result
-
-
-def write_csv_report(
-    path: Path,
-    failures: list[PortFailure],
-    temperature_failures: list[TemperatureFailure] | None = None,
-    coverage_results: list[CoverageResult] | None = None,
-) -> None:
-    """Write gain, temperature, and coverage findings to one CSV report."""
-    temperature_failures = temperature_failures or []
-    coverage_results = coverage_results or []
-    path.parent.mkdir(parents=True, exist_ok=True)
-    rows: list[tuple[tuple[str, ...], list[object]]] = []
-
-    for failure in failures:
-        rows.append(
-            (
-                (
-                    failure.dut_sn,
-                    failure.csv_file,
-                    failure.sequence_path,
-                    "Gain",
-                    failure.input_port,
-                ),
-                [
-                    failure.dut_sn,
-                    "Gain",
-                    "YES",
-                    failure.csv_file,
-                    failure.sequence_path,
-                    failure.input_port,
-                    failure.debug_port_path,
-                    failure.negative_rows,
-                    failure.worst_gain,
-                    failure.best_gain,
-                    ", ".join(failure.metrics),
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                ],
-            )
-        )
-
-    for failure in temperature_failures:
-        if not failure.measurements:
-            rows.append(
-                (
-                    (
-                        failure.dut_sn,
-                        failure.csv_file,
-                        failure.sequence_path,
-                        "Temperature",
-                        "",
-                    ),
-                    [
-                        failure.dut_sn,
-                        "Temperature",
-                        "YES",
-                        failure.csv_file,
-                        failure.sequence_path,
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                        "YES" if failure.strict else "NO",
-                        "",
-                        "",
-                        "",
-                        "",
-                        "NO",
-                        failure.reason,
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                    ],
-                )
-            )
-            continue
-
-        for measurement in failure.measurements:
-            rows.append(
-                (
-                    (
-                        failure.dut_sn,
-                        failure.csv_file,
-                        failure.sequence_path,
-                        "Temperature",
-                        str(measurement.line_number),
-                    ),
-                    [
-                        failure.dut_sn,
-                        "Temperature",
-                        "YES",
-                        failure.csv_file,
-                        failure.sequence_path,
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                        "YES" if failure.strict else "NO",
-                        measurement.value,
-                        measurement.setpoint if measurement.setpoint is not None else "",
-                        measurement.expected_min,
-                        measurement.expected_max,
-                        "YES" if measurement.within_spec else "NO",
-                        failure.reason,
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                    ],
-                )
-            )
-
-    for result in _coverage_report_results(coverage_results):
-        selected_evaluations = result.selected_evaluations
-        if not selected_evaluations:
-            continue
-        evaluation = selected_evaluations[0]
-        selected_label = result.selected_labels[0]
-        report_gaps = result.gaps or (None,)
-        for gap in report_gaps:
-            rows.append(
-                (
-                    (
-                        result.dut_sn,
-                        result.csv_file,
-                        result.sequence_path,
-                        "Coverage",
-                        gap.configuration_style if gap else "PASS",
-                    ),
-                    [
-                        result.dut_sn,
-                        "Coverage",
-                        "YES" if gap else "NO",
-                        result.csv_file,
-                        result.sequence_path,
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                        "",
-                        "Coverage gap" if gap else "Coverage complete",
-                        result.configuration_path,
-                        selected_label,
-                        selected_label,
-                        evaluation.covered_count,
-                        evaluation.required_count,
-                        f"{float(evaluation.coverage_ratio):.6f}",
-                        gap.main_script_key if gap else "",
-                        gap.gain_modes_text if gap else "",
-                        gap.tests_text if gap else "",
-                        "",
-                    ],
-                )
-            )
-
-    rows.sort(key=lambda item: item[0])
-    with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.writer(handle)
-        writer.writerow(
-            [
-                "DUT_SN",
-                "CHECK_TYPE",
-                "CASE_FLAGGED",
-                "CSV_FILE",
-                "SEQUENCE_FILE",
-                "FAILURE_PORT",
-                "DEBUG_PORT_PATH",
-                "LOW_GAIN_ROWS",
-                "WORST_GAIN_DB",
-                "BEST_GAIN_DB",
-                "GAIN_METRICS",
-                "STRICT",
-                "MEASURED_TEMPERATURE_C",
-                "SETPOINT_C",
-                "EXPECTED_MIN_C",
-                "EXPECTED_MAX_C",
-                "WITHIN_SPEC",
-                "REASON",
-                "COVERAGE_CONFIG_FILE",
-                "COVERAGE_LABEL",
-                "COVERAGE_CANDIDATES",
-                "COVERAGE_COVERED",
-                "COVERAGE_REQUIRED",
-                "COVERAGE_RATIO",
-                "COVERAGE_MAIN_SCRIPT_KEY",
-                "COVERAGE_GAIN_MODES",
-                "COVERAGE_TESTS",
-                "COVERAGE_WARNING",
-            ]
-        )
-        writer.writerows(row for _, row in rows)
-
-
-def write_temperature_csv_report(
-    path: Path,
-    failures: list[TemperatureFailure],
-) -> None:
-    """Backward-compatible wrapper for writing temperature-only findings."""
-    write_csv_report(path, [], failures)
-
-
 def write_markdown_report(
     path: Path,
     manifest_path: Path,
@@ -664,10 +424,6 @@ def write_markdown_report(
             coverage_groups[(result.dut_sn, result.csv_file, result.sequence_path)].append(
                 result
             )
-    coverage_pass_groups: dict[str, list[CoverageResult]] = defaultdict(list)
-    for result in coverage_results:
-        if not result.gaps:
-            coverage_pass_groups[result.dut_sn].append(result)
 
     dut_names = sorted(
         flagged_dut_names(results, temperature_failures, coverage_results)
@@ -691,7 +447,7 @@ def write_markdown_report(
         lines.append("## Cases flagged")
         lines.append("")
         for dut_sn in dut_names:
-            lines.append(f"### DUT: {dut_sn}")
+            lines.append(f"## DUT: {dut_sn}")
             lines.append("")
             file_keys = {
                 key
@@ -704,6 +460,8 @@ def write_markdown_report(
                 if key[0] == dut_sn
             }
             for _, csv_file, sequence_path in sorted(file_keys):
+                lines.append("---")
+                lines.append("")
                 file_key = (dut_sn, csv_file, sequence_path)
                 file_coverage_results = coverage_groups.get(file_key, [])
                 ssf_paths = sorted(
@@ -732,7 +490,8 @@ def write_markdown_report(
                             f"{failure.best_gain:g} dB"
                         )
                 elif file_gain_results:
-                    lines.append(f"Gain rows flagged: {len(file_gain_results)}")
+                    lines.append("Gain failures:")
+                    lines.append(f"- Rows flagged: {len(file_gain_results)}")
 
                 temperature_file_failures = temperature_groups.get(file_key, [])
                 if file_gain_failures or file_gain_results:
@@ -760,69 +519,23 @@ def write_markdown_report(
                 ) and file_coverage_results:
                     lines.append("")
                 for coverage_result in file_coverage_results:
-                    report_coverage_results = list(
-                        _coverage_report_results([coverage_result])
-                    )
-                    for result in report_coverage_results:
-                        selected_evaluations = result.selected_evaluations
-                        if not selected_evaluations:
-                            continue
-                        evaluation = selected_evaluations[0]
-                        lines.append("Coverage failures:")
-                        lines.append(
-                            f"- Label: {result.selected_labels[0]}"
-                        )
-                        lines.append(
-                            f"- Coverage: {evaluation.covered_count}/"
-                            f"{evaluation.required_count} "
-                            f"({float(evaluation.coverage_ratio):.1%})"
-                        )
-                        for gap in result.gaps:
-                            lines.append(gap.copy_text)
-
-                lines.append("")
-        lines.append("The combined CSV report contains the same findings in machine-readable form.")
-        lines.append("")
-    else:
-        lines.extend(
-            [
-                "No gain, temperature, or coverage failures were found. "
-                "No DUTs were flagged.",
-                "",
-            ]
-        )
-
-    if coverage_pass_groups:
-        lines.extend(["## Coverage assessments", ""])
-        for dut_sn in sorted(coverage_pass_groups):
-            lines.append(f"### DUT: {dut_sn}")
-            lines.append("")
-            for coverage_result in sorted(
-                coverage_pass_groups[dut_sn],
-                key=lambda item: (item.csv_file, item.sequence_path),
-            ):
-                lines.append(f"Datalog path: `{coverage_result.csv_file}`")
-                lines.append(
-                    f"Sequence path: `{coverage_result.sequence_path or 'Unavailable'}`"
-                )
-                lines.append(
-                    f"SSF path: `"
-                    f"{coverage_result.configuration_path}`"
-                )
-                lines.append("")
-                for result in _coverage_report_results([coverage_result]):
+                    selected_evaluations = coverage_result.selected_evaluations
+                    if not selected_evaluations:
+                        continue
+                    evaluation = selected_evaluations[0]
+                    lines.append("Coverage failures:")
+                    lines.append(f"- Label: {coverage_result.selected_labels[0]}")
                     lines.append(
-                        f"Label: {result.selected_labels[0]}"
+                        f"- Coverage: {evaluation.covered_count}/"
+                        f"{evaluation.required_count} "
+                        f"({float(evaluation.coverage_ratio):.1%})"
                     )
-                    selected_evaluations = result.selected_evaluations
-                    if selected_evaluations:
-                        evaluation = selected_evaluations[0]
-                        lines.append(
-                            f"- Coverage: {evaluation.covered_count}/"
-                            f"{evaluation.required_count} "
-                            f"({float(evaluation.coverage_ratio):.1%}) [FULL]"
-                        )
-                    lines.append("")
+                    for gap in coverage_result.gaps:
+                        lines.append(gap.copy_text)
+
+                lines.append("")
+    else:
+        lines.append("")
 
     if errors:
         lines.extend(["## Files that could not be scanned", ""])

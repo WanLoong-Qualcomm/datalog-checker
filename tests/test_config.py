@@ -5,7 +5,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from datalog_checker.config import CheckSettings, load_settings, parse_gain_threshold
+from datalog_checker.config import (
+    COVERAGE_CHECK_NAME,
+    CheckSettings,
+    default_check_settings,
+    load_settings,
+    parse_gain_threshold,
+)
 
 
 class SettingsTests(unittest.TestCase):
@@ -47,6 +53,33 @@ class SettingsTests(unittest.TestCase):
         settings = load_settings(path)
 
         self.assertEqual(settings.gain_threshold, 0.0)
+
+    def test_loads_output_directory_relative_to_manifest(self) -> None:
+        path = self.write_settings(
+            {
+                "checks": {},
+                "files": [],
+                "outputs_directory": "outputs",
+            }
+        )
+
+        settings = load_settings(path)
+
+        self.assertEqual(settings.outputs_directory, path.parent / "outputs")
+
+    def test_coverage_check_is_named_as_lite_and_legacy_name_is_supported(self) -> None:
+        path = self.write_settings(
+            {
+                "checks": {"Coverage": {"enabled": True}},
+                "files": [],
+            }
+        )
+
+        settings = load_settings(path)
+
+        self.assertIn(COVERAGE_CHECK_NAME, settings.checks)
+        self.assertTrue(settings.checks[COVERAGE_CHECK_NAME].enabled)
+        self.assertIn(COVERAGE_CHECK_NAME, default_check_settings())
 
     def test_migrates_previous_flat_gain_configuration(self) -> None:
         path = self.write_settings(

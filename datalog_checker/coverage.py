@@ -9,7 +9,7 @@ from fractions import Fraction
 from pathlib import Path
 from typing import Iterable
 
-from datalog_checker.coverage_config import TestNameMapping
+from datalog_checker.coverage_config import CoverageExclusion, TestNameMapping
 
 
 class CoverageError(ValueError):
@@ -72,7 +72,7 @@ class CoverageGap:
 
     @property
     def gain_modes_text(self) -> str:
-        return ";".join(self.gain_modes)
+        return "/".join(self.gain_modes)
 
     @property
     def tests_text(self) -> str:
@@ -84,7 +84,7 @@ class CoverageGap:
 
     @property
     def copy_text(self) -> str:
-        """Return the gap as clean comma-separated configuration fields."""
+        """Return the gap as comma-separated configuration fields."""
         return f"{self.main_script_key},{self.gain_modes_text},{self.tests_text}"
 
 
@@ -186,6 +186,7 @@ class _Requirement:
 def _read_sequence_configuration(
     path: Path,
     mapping: TestNameMapping,
+    exclusions: tuple[CoverageExclusion, ...] = (),
 ) -> dict[str, tuple[_Requirement, ...]]:
     with path.open(
         "r", newline="", encoding="utf-8-sig", errors="replace"
@@ -206,6 +207,11 @@ def _read_sequence_configuration(
             },
             path,
         )
+        temperature_index = _find_column(header, "Temperature")
+        if exclusions and temperature_index is None:
+            raise CoverageError(
+                f"{path} is missing coverage exclusion column(s): Temperature."
+            )
         requirements: dict[str, list[_Requirement]] = {}
         seen: dict[str, set[tuple[str, str, str, str]]] = {}
         for row in reader:
@@ -230,6 +236,13 @@ def _read_sequence_configuration(
             seen.setdefault(label_key, set())
             gain_modes = _split_tokens(raw_gain_modes)
             tests_names = _split_tokens(raw_tests)
+            temperatures = (
+                _split_tokens(row[temperature_index])
+                if temperature_index is not None
+                else ("",)
+            )
+            if not temperatures:
+                temperatures = ("",)
             if not gain_modes or not tests_names:
                 raise CoverageError(
                     f"{path} has an incomplete coverage row for label '{label}'."
@@ -237,6 +250,17 @@ def _read_sequence_configuration(
             for tests_name in tests_names:
                 tnames = mapping.tnames_for(tests_name)
                 for gain_mode in gain_modes:
+                    if any(
+                        exclusion.matches(
+                            temperature,
+                            main_script_key,
+                            gain_mode,
+                            tests_name,
+                        )
+                        for exclusion in exclusions
+                        for temperature in temperatures
+                    ):
+                        continue
                     for tname in tnames:
                         requirement_key = (
                             _normalise_value(main_script_key),
@@ -422,11 +446,16 @@ def scan_coverage_file(
     path: Path,
     display_name: str,
     mapping: TestNameMapping,
+    exclusions: Iterable[CoverageExclusion] = (),
 ) -> CoverageResult:
     """Compare a datalog against the label declared in its own rows."""
     dut_sn, sequence_path, datalog_label, seen = _read_datalog(path)
     configuration_path = _resolve_configuration_path(path, sequence_path)
-    requirements_by_label = _read_sequence_configuration(configuration_path, mapping)
+    requirements_by_label = _read_sequence_configuration(
+        configuration_path,
+        mapping,
+        tuple(exclusions),
+    )
     try:
         requirements = requirements_by_label[datalog_label]
     except KeyError as error:

@@ -2,6 +2,7 @@
   "temperature_measurements": [
     "THERM_DIODE_HKADC_TEMP"
   ],
+  "coverage_exclusions_path": "coverage_exclusions.csv",
   "tests_to_tnames": {
     "GAIN": [
       "GAIN_I",
@@ -14,7 +15,7 @@
       "SSNF-FIRSTRBWSPURREMOVAL_I+JQ"
     ],
     "SSNF-LASTRBWSPURREMOVAL": [
-      "SSNF-FIRSTRBWSPURREMOVAL_I+JQ"
+      "SSNF-LASTRBWSPURREMOVAL_I+JQ"
     ],
     "IP2IB": [
       "IP2IB_IQ"

@@ -10,13 +10,16 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from datalog_checker.config import (
+    COVERAGE_CHECK_NAME,
     default_check_settings,
     parse_gain_threshold,
     parse_temperature_tolerance,
 )
 from datalog_checker.coverage import CoverageResult, scan_coverage_file
 from datalog_checker.coverage_config import (
+    CoverageExclusion,
     TestNameMapping,
+    load_coverage_exclusions,
     load_temperature_measurement_names,
     load_test_name_mapping,
 )
@@ -28,7 +31,7 @@ from datalog_checker.core import (
     scan_file,
     scan_temperature_file,
     summarize_port_failures,
-    write_csv_report,
+    timestamped_report_path,
     write_markdown_report,
 )
 
@@ -620,13 +623,15 @@ class DatalogCheckerApp(tk.Tk):
             )
             return
 
-        coverage_enabled = self.check_vars["Coverage"].get()
+        coverage_enabled = self.check_vars[COVERAGE_CHECK_NAME].get()
         coverage_mapping: TestNameMapping | None = None
+        coverage_exclusions: tuple[CoverageExclusion, ...] = ()
         temperature_measurement_names: tuple[str, ...] | None = None
         if coverage_enabled or temperature_enabled:
             try:
                 if coverage_enabled:
                     coverage_mapping = load_test_name_mapping()
+                    coverage_exclusions = load_coverage_exclusions()
                 if temperature_enabled:
                     temperature_measurement_names = load_temperature_measurement_names()
             except (OSError, ValueError) as error:
@@ -652,6 +657,7 @@ class DatalogCheckerApp(tk.Tk):
                 temperature_measurement_names,
                 coverage_enabled,
                 coverage_mapping,
+                coverage_exclusions,
             ),
             daemon=True,
         ).start()
@@ -668,6 +674,7 @@ class DatalogCheckerApp(tk.Tk):
         temperature_measurement_names: tuple[str, ...] | None,
         coverage_enabled: bool,
         coverage_mapping: TestNameMapping | None,
+        coverage_exclusions: tuple[CoverageExclusion, ...],
     ) -> None:
         results: list[NegativeGain] = []
         temperature_failures: list[TemperatureFailure] = []
@@ -691,7 +698,12 @@ class DatalogCheckerApp(tk.Tk):
                     )
                 if coverage_enabled and coverage_mapping is not None:
                     coverage_results.append(
-                        scan_coverage_file(path, str(path), coverage_mapping)
+                        scan_coverage_file(
+                            path,
+                            str(path),
+                            coverage_mapping,
+                            coverage_exclusions,
+                        )
                     )
                 scanned_files.append(path)
             except (OSError, ValueError) as error:
@@ -758,8 +770,7 @@ class DatalogCheckerApp(tk.Tk):
             return
 
         output_path = Path(output_directory)
-        markdown_path = output_path / "datalog_report.md"
-        csv_path = output_path / "datalog_report.csv"
+        markdown_path = timestamped_report_path(output_path / "datalog_report.md")
         try:
             write_markdown_report(
                 markdown_path,
@@ -768,12 +779,6 @@ class DatalogCheckerApp(tk.Tk):
                 results,
                 failures,
                 errors,
-                temperature_failures,
-                coverage_results,
-            )
-            write_csv_report(
-                csv_path,
-                failures,
                 temperature_failures,
                 coverage_results,
             )
@@ -792,7 +797,7 @@ class DatalogCheckerApp(tk.Tk):
             f"Temperature failure cases: {len(temperature_failures)}\n\n"
             f"Coverage failure cases: "
             f"{sum(bool(result.gaps) for result in coverage_results)}\n\n"
-            f"Saved:\n{markdown_path}\n{csv_path}"
+            f"Saved:\n{markdown_path}"
         )
         if errors:
             summary += f"\n\nFiles with errors: {len(errors)}"

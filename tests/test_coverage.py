@@ -6,8 +6,8 @@ import unittest
 from pathlib import Path
 
 from datalog_checker.coverage import CoverageError, scan_coverage_file
-from datalog_checker.coverage_config import TestNameMapping
-from datalog_checker.core import write_csv_report, write_markdown_report
+from datalog_checker.coverage_config import CoverageExclusion, TestNameMapping
+from datalog_checker.core import write_markdown_report
 
 
 class CoverageTests(unittest.TestCase):
@@ -91,8 +91,8 @@ class CoverageTests(unittest.TestCase):
 
         self.assertEqual(result.selected_evaluations[0].covered_count, 1)
         self.assertEqual(result.selected_evaluations[0].required_count, 4)
-        self.assertEqual(result.gaps[0].gain_modes_text, "G0;G1")
-        self.assertEqual(result.gaps[0].configuration_style, "(KEY, G0;G1, GAIN)")
+        self.assertEqual(result.gaps[0].gain_modes_text, "G0/G1")
+        self.assertEqual(result.gaps[0].configuration_style, "(KEY, G0/G1, GAIN)")
 
     def test_missing_tests_are_recombined_for_reporting(self) -> None:
         datalog = self.write_case(
@@ -104,6 +104,57 @@ class CoverageTests(unittest.TestCase):
 
         self.assertEqual(result.gaps[0].tests_text, "GAIN;LOCK")
         self.assertEqual(result.gaps[0].configuration_style, "(KEY, G0, GAIN;LOCK)")
+
+    def test_coverage_exclusions_remove_matching_ssf_tests(self) -> None:
+        configuration = self.root / "sequence.csv"
+        with configuration.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.writer(handle)
+            writer.writerow(
+                ["Label", "Temperature", "Main_Script_Key", "Config_GainMode", "TESTS"]
+            )
+            writer.writerow(["LABEL", "110", "KEY", "G0", "IP2ACS"])
+            writer.writerow(["LABEL", "110", "KEY", "G0", "IP3ACS"])
+            writer.writerow(["LABEL", "110", "KEY", "G0", "GAIN"])
+
+        datalog = self.root / "datalog.csv"
+        with datalog.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.writer(handle)
+            writer.writerow(["SEQUENCE_FILE=sequence.seq"])
+            writer.writerow(
+                [
+                    "STEP_NAME=",
+                    "TCOND=DUT_SN",
+                    "TCOND=CONFIG_SEQ_FROM_CSV",
+                    "TNAME",
+                    "TCOND=MAIN_SCRIPT_KEY",
+                    "TCOND=CONFIG_GAINMODE_RX",
+                ]
+            )
+            for tname in ("IP2ACS", "IP3ACS", "GAIN_I", "GAIN_Q"):
+                writer.writerow(["row", "DUT-1", "LABEL", tname, "KEY", "G0"])
+
+        mapping = TestNameMapping(
+            {
+                "GAIN": ("GAIN_I", "GAIN_Q"),
+                "IP2ACS": ("IP2ACS",),
+                "IP3ACS": ("IP3ACS",),
+            }
+        )
+        exclusions = (
+            CoverageExclusion(
+                temperatures=("110",),
+                main_script_keys=("*",),
+                gain_modes=("*",),
+                tests=("IP2ACS", "IP3ACS"),
+            ),
+        )
+
+        result = scan_coverage_file(datalog, "datalog.csv", mapping, exclusions)
+
+        evaluation = result.selected_evaluations[0]
+        self.assertEqual(evaluation.required_count, 2)
+        self.assertEqual(evaluation.covered_count, 2)
+        self.assertTrue(result.fully_covered)
 
     def test_duplicate_configuration_and_datalog_rows_do_not_change_coverage(self) -> None:
         datalog = self.write_case(
@@ -135,16 +186,14 @@ class CoverageTests(unittest.TestCase):
         with self.assertRaisesRegex(CoverageError, "not found"):
             scan_coverage_file(datalog, "datalog.csv", self.mapping)
 
-    def test_coverage_gaps_are_written_to_combined_reports(self) -> None:
+    def test_coverage_gaps_are_written_to_markdown_report(self) -> None:
         datalog = self.write_case(
             [("LABEL", "KEY", "G0/G1", "GAIN")],
             [("KEY", "G0", "GAIN_I")],
         )
         result = scan_coverage_file(datalog, "datalog.csv", self.mapping)
-        csv_report = self.root / "report.csv"
         markdown_report = self.root / "report.md"
 
-        write_csv_report(csv_report, [], [], [result])
         write_markdown_report(
             markdown_report,
             Path("JUI.json"),
@@ -156,16 +205,13 @@ class CoverageTests(unittest.TestCase):
             [result],
         )
 
-        csv_text = csv_report.read_text(encoding="utf-8")
         markdown_text = markdown_report.read_text(encoding="utf-8")
-        self.assertIn("Coverage", csv_text)
-        self.assertIn("COVERAGE_GAIN_MODES", csv_text)
-        self.assertIn("KEY,G0;G1,GAIN", markdown_text)
+        self.assertIn("KEY,G0/G1,GAIN", markdown_text)
         self.assertIn("- Label: LABEL", markdown_text)
         self.assertNotIn("Candidate label", markdown_text)
         self.assertNotIn("Warning:", markdown_text)
 
-    def test_full_coverage_report_uses_declared_label_without_warning(self) -> None:
+    def test_full_coverage_is_not_written_to_markdown_report(self) -> None:
         datalog = self.write_case(
             [
                 ("A", "KEY_A", "G0", "GAIN"),
@@ -192,8 +238,9 @@ class CoverageTests(unittest.TestCase):
         )
 
         markdown_text = markdown_report.read_text(encoding="utf-8")
-        self.assertIn("Label: B", markdown_text)
-        self.assertIn("[FULL]", markdown_text)
+        self.assertNotIn("Label: B", markdown_text)
+        self.assertNotIn("[FULL]", markdown_text)
+        self.assertNotIn("Coverage assessments", markdown_text)
         self.assertNotIn("Candidate label", markdown_text)
         self.assertNotIn("Warning:", markdown_text)
 

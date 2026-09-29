@@ -5,7 +5,11 @@ a = Analysis(
     ['datalog_checker/gui.py'],
     pathex=['.'],
     binaries=[],
-    datas=[('config.json', '.'), ('assets/datalog_checker.ico', 'assets')],
+    datas=[
+        ('config.json', '.'),
+        ('coverage_exclusions.csv', '.'),
+        ('assets/datalog_checker.ico', 'assets'),
+    ],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

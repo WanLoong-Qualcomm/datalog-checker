@@ -7,6 +7,7 @@ from pathlib import Path
 
 from datalog_checker.coverage_config import (
     CoverageConfigError,
+    load_coverage_exclusions,
     load_temperature_measurement_names,
     load_test_name_mapping,
 )
@@ -90,6 +91,21 @@ class CoverageConfigTests(unittest.TestCase):
 
         with self.assertRaises(CoverageConfigError):
             load_temperature_measurement_names(self.path)
+
+    def test_loads_coverage_exclusions_relative_to_config(self) -> None:
+        exclusions_path = self.path.parent / "exclusions.csv"
+        exclusions_path.write_text(
+            "Temperature,Main_Script_Key,Config_GainMode,TESTS\n"
+            "110;-50,*,G1/G2,IP2ACS;IP3ACS\n",
+            encoding="utf-8",
+        )
+        self.write_config({"coverage_exclusions_path": "exclusions.csv"})
+
+        exclusions = load_coverage_exclusions(self.path)
+
+        self.assertEqual(len(exclusions), 1)
+        self.assertTrue(exclusions[0].matches("110", "KEY", "G2", "IP3ACS"))
+        self.assertFalse(exclusions[0].matches("25", "KEY", "G2", "IP3ACS"))
 
 
 if __name__ == "__main__":

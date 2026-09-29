@@ -20,9 +20,11 @@ from datalog_checker.coverage import (
 )
 from datalog_checker.coverage_config import (
     CoverageConfigError,
+    CoverageExclusion,
     DEFAULT_TEMPERATURE_MEASUREMENTS,
     TestNameMapping,
     default_coverage_config_path,
+    load_coverage_exclusions,
     load_temperature_measurement_names,
     load_test_name_mapping,
 )
@@ -37,14 +39,14 @@ from datalog_checker.core import (
     scan_file,
     scan_temperature_file,
     summarize_port_failures,
-    write_csv_report,
     write_markdown_report,
-    write_temperature_csv_report,
+    timestamped_report_path,
 )
 
 __all__ = [
     "CheckSettings",
     "CoverageConfigError",
+    "CoverageExclusion",
     "DEFAULT_TEMPERATURE_MEASUREMENTS",
     "CoverageError",
     "CoverageEvaluationGroup",
@@ -67,13 +69,13 @@ __all__ = [
     "load_settings",
     "load_temperature_measurement_names",
     "load_test_name_mapping",
+    "load_coverage_exclusions",
     "parse_gain_threshold",
     "parse_temperature_tolerance",
     "scan_file",
     "scan_coverage_file",
     "scan_temperature_file",
     "summarize_port_failures",
-    "write_csv_report",
     "write_markdown_report",
-    "write_temperature_csv_report",
+    "timestamped_report_path",
 ]

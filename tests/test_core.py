@@ -9,7 +9,7 @@ from datalog_checker.core import (
     scan_file,
     scan_temperature_file,
     summarize_port_failures,
-    write_csv_report,
+    timestamped_report_path,
     write_markdown_report,
 )
 
@@ -59,32 +59,10 @@ class ScanTests(unittest.TestCase):
         self.assertEqual(failures[0].worst_gain, -0.5)
         self.assertEqual(failures[0].best_gain, 1.5)
 
-    def test_combined_csv_report_contains_gain_and_temperature_rows(self) -> None:
-        results = scan_file(self.csv_path, "sample.csv", 1.0)
-        report_path = Path(self.temp_directory.name) / "report.csv"
-        temperature_path = self._write_temperature_csv(
-            header_extra=[],
-            values=[99.0, 37.5, 39.9, 38.9],
-        )
-        temperature_failures = scan_temperature_file(
-            temperature_path,
-            "sample.csv",
-            tolerance=10,
-            strict=True,
-        )
+    def test_timestamped_report_path_prefixes_report_name(self) -> None:
+        report_path = timestamped_report_path(Path("datalog_report.md"))
 
-        write_csv_report(
-            report_path,
-            summarize_port_failures(results),
-            temperature_failures,
-        )
-
-        with report_path.open(encoding="utf-8", newline="") as handle:
-            rows = list(csv.DictReader(handle))
-        self.assertEqual({row["CHECK_TYPE"] for row in rows}, {"Gain", "Temperature"})
-        self.assertTrue(all(row["CASE_FLAGGED"] == "YES" for row in rows))
-        self.assertIn("LOW_GAIN_ROWS", rows[0])
-        self.assertNotIn("RETEST_REQUIRED", rows[0])
+        self.assertRegex(report_path.name, r"^\d{8}_\d{6}_datalog_report\.md$")
 
     def test_markdown_report_groups_gain_and_temperature_by_dut(self) -> None:
         results = scan_file(self.csv_path, "sample.csv", 1.0)
@@ -113,11 +91,13 @@ class ScanTests(unittest.TestCase):
         report = report_path.read_text(encoding="utf-8")
         self.assertIn("DUTs flagged: 1", report)
         self.assertIn("## Cases flagged", report)
-        self.assertIn("### DUT: DUT-1", report)
+        self.assertIn("## DUT: DUT-1", report)
+        self.assertIn("## DUT: DUT-1\n\n---\n\nDatalog path: `sample.csv`", report)
         self.assertIn("Gain failures:", report)
         self.assertIn("Temperature failures:", report)
         self.assertIn("dB\n\nTemperature failures:", report)
         self.assertNotIn("## Temperature failures", report)
+        self.assertNotIn("Coverage assessments", report)
 
     def test_temperature_non_strict_accepts_best_case_at_room_temperature(self) -> None:
         path = self._write_temperature_csv(
@@ -174,19 +154,6 @@ class ScanTests(unittest.TestCase):
         )
 
         self.assertEqual(failures, [])
-
-    def test_combined_csv_report_has_machine_readable_temperature_rows(self) -> None:
-        path = self._write_temperature_csv(
-            header_extra=[],
-            values=[99.0, 37.5, 39.9, 38.9],
-        )
-        failures = scan_temperature_file(path, "room.csv", tolerance=10, strict=True)
-        report_path = Path(self.temp_directory.name) / "report.csv"
-
-        write_csv_report(report_path, [], failures)
-
-        header = report_path.read_text(encoding="utf-8").splitlines()[0]
-        self.assertIn("MEASURED_TEMPERATURE_C", header)
 
     def _write_temperature_csv(
         self,
