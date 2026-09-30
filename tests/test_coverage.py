@@ -90,7 +90,7 @@ class CoverageTests(unittest.TestCase):
         result = scan_coverage_file(datalog, "datalog.csv", self.mapping)
 
         self.assertEqual(result.selected_evaluations[0].covered_count, 1)
-        self.assertEqual(result.selected_evaluations[0].required_count, 4)
+        self.assertEqual(result.selected_evaluations[0].required_count, 8)
         self.assertEqual(result.gaps[0].gain_modes_text, "G0/G1")
         self.assertEqual(result.gaps[0].configuration_style, "(KEY, G0/G1, GAIN)")
 
@@ -130,8 +130,9 @@ class CoverageTests(unittest.TestCase):
                     "TCOND=CONFIG_GAINMODE_RX",
                 ]
             )
-            for tname in ("IP2ACS", "IP3ACS", "GAIN_I", "GAIN_Q"):
-                writer.writerow(["row", "DUT-1", "LABEL", tname, "KEY", "G0"])
+            for _ in range(2):
+                for tname in ("IP2ACS", "IP3ACS", "GAIN_I", "GAIN_Q"):
+                    writer.writerow(["row", "DUT-1", "LABEL", tname, "KEY", "G0"])
 
         mapping = TestNameMapping(
             {
@@ -152,11 +153,11 @@ class CoverageTests(unittest.TestCase):
         result = scan_coverage_file(datalog, "datalog.csv", mapping, exclusions)
 
         evaluation = result.selected_evaluations[0]
-        self.assertEqual(evaluation.required_count, 2)
-        self.assertEqual(evaluation.covered_count, 2)
+        self.assertEqual(evaluation.required_count, 4)
+        self.assertEqual(evaluation.covered_count, 4)
         self.assertTrue(result.fully_covered)
 
-    def test_duplicate_configuration_and_datalog_rows_do_not_change_coverage(self) -> None:
+    def test_duplicate_configuration_rows_are_deduplicated_but_datalog_rows_count(self) -> None:
         datalog = self.write_case(
             [
                 ("LABEL", " KEY ", " G0 / G0 ", " GAIN "),
@@ -166,13 +167,49 @@ class CoverageTests(unittest.TestCase):
                 ("KEY", "G0", "GAIN_I"),
                 ("KEY", "G0", "GAIN_I"),
                 ("KEY", "G0", "GAIN_Q"),
+                ("KEY", "G0", "GAIN_Q"),
             ],
         )
 
         result = scan_coverage_file(datalog, "datalog.csv", self.mapping)
 
         self.assertTrue(result.fully_covered)
-        self.assertEqual(result.selected_evaluations[0].required_count, 2)
+        self.assertEqual(result.selected_evaluations[0].required_count, 4)
+
+    def test_coverage_multiplicity_uses_signal_path_count(self) -> None:
+        one_path = self.write_case(
+            [("LABEL", "KEY_RP0-R0", "G0", "GAIN")],
+            [
+                ("KEY_RP0-R0", "G0", "GAIN_I"),
+                ("KEY_RP0-R0", "G0", "GAIN_I"),
+                ("KEY_RP0-R0", "G0", "GAIN_Q"),
+                ("KEY_RP0-R0", "G0", "GAIN_Q"),
+            ],
+        )
+        one_path_result = scan_coverage_file(one_path, "one.csv", self.mapping)
+
+        self.assertTrue(one_path_result.fully_covered)
+        self.assertEqual(one_path_result.selected_evaluations[0].required_count, 4)
+        self.assertEqual(one_path_result.selected_evaluations[0].covered_count, 4)
+
+        two_path = self.write_case(
+            [("LABEL", "KEY_RP0-R0_RP1-R1", "G0", "GAIN")],
+            [
+                ("KEY_RP0-R0_RP1-R1", "G0", "GAIN_I"),
+                ("KEY_RP0-R0_RP1-R1", "G0", "GAIN_I"),
+                ("KEY_RP0-R0_RP1-R1", "G0", "GAIN_I"),
+                ("KEY_RP0-R0_RP1-R1", "G0", "GAIN_I"),
+                ("KEY_RP0-R0_RP1-R1", "G0", "GAIN_Q"),
+                ("KEY_RP0-R0_RP1-R1", "G0", "GAIN_Q"),
+                ("KEY_RP0-R0_RP1-R1", "G0", "GAIN_Q"),
+                ("KEY_RP0-R0_RP1-R1", "G0", "GAIN_Q"),
+            ],
+        )
+        two_path_result = scan_coverage_file(two_path, "two.csv", self.mapping)
+
+        self.assertTrue(two_path_result.fully_covered)
+        self.assertEqual(two_path_result.selected_evaluations[0].required_count, 8)
+        self.assertEqual(two_path_result.selected_evaluations[0].covered_count, 8)
 
     def test_missing_sequence_configuration_is_an_error(self) -> None:
         datalog = self.root / "datalog.csv"
@@ -218,6 +255,8 @@ class CoverageTests(unittest.TestCase):
                 ("B", "KEY_B", "G0", "GAIN"),
             ],
             [
+                ("KEY_B", "G0", "GAIN_I"),
+                ("KEY_B", "G0", "GAIN_Q"),
                 ("KEY_B", "G0", "GAIN_I"),
                 ("KEY_B", "G0", "GAIN_Q"),
             ],

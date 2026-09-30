@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import csv
 import re
+from collections import Counter
 from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Mapping
 
 from datalog_checker.coverage_config import CoverageExclusion, TestNameMapping
 
@@ -17,6 +18,7 @@ class CoverageError(ValueError):
 
 
 _TOKEN_SEPARATOR = re.compile(r"[;/|,]+")
+_SIGNAL_PATH_TOKEN = re.compile(r"RP\d+-R\d+", re.IGNORECASE)
 
 
 def _canonical_header(value: str) -> str:
@@ -33,6 +35,11 @@ def _split_tokens(value: str) -> tuple[str, ...]:
         for token in (_normalise_value(item) for item in _TOKEN_SEPARATOR.split(value))
         if token
     )
+
+
+def _signal_path_count(main_script_key: str) -> int:
+    """Return the number of signal-path RP/RP pairs in a main script key."""
+    return max(1, len(_SIGNAL_PATH_TOKEN.findall(main_script_key)))
 
 
 def _find_column(header: list[str], *names: str) -> int | None:
@@ -287,7 +294,7 @@ def _read_sequence_configuration(
 
 def _read_datalog(
     path: Path,
-) -> tuple[str, str, str, set[tuple[str, str, str]]]:
+) -> tuple[str, str, str, Counter[tuple[str, str, str]]]:
     with path.open(
         "r", newline="", encoding="utf-8-sig", errors="replace"
     ) as handle:
@@ -314,7 +321,7 @@ def _read_datalog(
             },
             path,
         )
-        seen: set[tuple[str, str, str]] = set()
+        seen: Counter[tuple[str, str, str]] = Counter()
         dut_names: list[str] = []
         labels: list[str] = []
         required_index = max(columns.values())
@@ -331,7 +338,7 @@ def _read_datalog(
             gain_mode = _normalise_value(row[columns["Config_GainMode"]])
             tname = _normalise_value(row[columns["TNAME"]])
             if main_script_key and gain_mode and tname:
-                seen.add((main_script_key, gain_mode, tname))
+                seen[(main_script_key, gain_mode, tname)] += 1
 
     dut_sn = dut_names[0] if dut_names else "UNKNOWN"
     if len(dut_names) > 1:
@@ -377,17 +384,27 @@ def _resolve_configuration_path(datalog_path: Path, sequence_path: str) -> Path:
 def _evaluate_label(
     label: str,
     requirements: tuple[_Requirement, ...],
-    seen: set[tuple[str, str, str]],
+    seen: Mapping[tuple[str, str, str], int],
 ) -> CoverageLabelResult:
+    required_occurrences = {
+        requirement: 2 * _signal_path_count(requirement.main_script_key)
+        for requirement in requirements
+    }
     covered_count = sum(
-        (
-            _normalise_value(requirement.main_script_key),
-            requirement.gain_mode,
-            requirement.tname,
+        min(
+            seen.get(
+                (
+                    _normalise_value(requirement.main_script_key),
+                    requirement.gain_mode,
+                    requirement.tname,
+                ),
+                0,
+            ),
+            required_occurrences[requirement],
         )
-        in seen
         for requirement in requirements
     )
+    required_count = sum(required_occurrences.values())
     missing_modes: dict[tuple[str, str], list[str]] = {}
     display_values: dict[tuple[str, str], tuple[str, str]] = {}
     for requirement in requirements:
@@ -396,7 +413,7 @@ def _evaluate_label(
             requirement.gain_mode,
             requirement.tname,
         )
-        if requirement_key in seen:
+        if seen.get(requirement_key, 0) >= required_occurrences[requirement]:
             continue
         group_key = (
             _normalise_value(requirement.main_script_key),
@@ -436,7 +453,7 @@ def _evaluate_label(
     )
     return CoverageLabelResult(
         label=label,
-        required_count=len(requirements),
+        required_count=required_count,
         covered_count=covered_count,
         gaps=gaps,
     )

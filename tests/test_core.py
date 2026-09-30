@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from datalog_checker.core import (
+    NegativeGain,
     scan_file,
     scan_temperature_file,
     summarize_port_failures,
@@ -91,13 +92,46 @@ class ScanTests(unittest.TestCase):
         report = report_path.read_text(encoding="utf-8")
         self.assertIn("DUTs flagged: 1", report)
         self.assertIn("## Cases flagged", report)
-        self.assertIn("## DUT: DUT-1", report)
-        self.assertIn("## DUT: DUT-1\n\n---\n\nDatalog path: `sample.csv`", report)
+        self.assertIn("=" * 80 + "\n\n## DUT: DUT-1", report)
+        self.assertIn(
+            "## DUT: DUT-1\n\n"
+            + "-" * 80
+            + "\n\nDatalog path: `sample.csv`",
+            report,
+        )
         self.assertIn("Gain failures:", report)
         self.assertIn("Temperature failures:", report)
         self.assertIn("dB\n\nTemperature failures:", report)
         self.assertNotIn("## Temperature failures", report)
         self.assertNotIn("Coverage assessments", report)
+
+    def test_markdown_report_separates_multiple_duts(self) -> None:
+        first_results = scan_file(self.csv_path, "first.csv", 1.0)
+        second_result = NegativeGain(
+            dut_sn="DUT-2",
+            csv_file="second.csv",
+            sequence_path="C:/sequence.seq",
+            line_number=1,
+            metric="GAIN",
+            value=-1.0,
+            ports=(),
+            all_gain_values=(-1.0,),
+        )
+        report_path = Path(self.temp_directory.name) / "report.md"
+
+        write_markdown_report(
+            report_path,
+            Path("JUI.json"),
+            [self.csv_path],
+            [*first_results, second_result],
+            [],
+            [],
+        )
+
+        report = report_path.read_text(encoding="utf-8")
+        self.assertIn("=" * 80 + "\n\n## DUT: DUT-1", report)
+        self.assertIn("=" * 80 + "\n\n## DUT: DUT-2", report)
+        self.assertNotIn("-" * 80 + "\n\n## DUT: DUT-2", report)
 
     def test_temperature_non_strict_accepts_best_case_at_room_temperature(self) -> None:
         path = self._write_temperature_csv(

@@ -20,6 +20,8 @@ INPUT_PORT_COLUMNS = (
     "MCOND=RFIN_PORT",
     "MCOND=BBOUT_PATH",
 )
+REPORT_DUT_SEPARATOR = "=" * 80
+REPORT_SECTION_SEPARATOR = "-" * 80
 
 
 @dataclass(frozen=True)
@@ -447,6 +449,8 @@ def write_markdown_report(
         lines.append("## Cases flagged")
         lines.append("")
         for dut_sn in dut_names:
+            lines.append(REPORT_DUT_SEPARATOR)
+            lines.append("")
             lines.append(f"## DUT: {dut_sn}")
             lines.append("")
             file_keys = {
@@ -460,7 +464,7 @@ def write_markdown_report(
                 if key[0] == dut_sn
             }
             for _, csv_file, sequence_path in sorted(file_keys):
-                lines.append("---")
+                lines.append(REPORT_SECTION_SEPARATOR)
                 lines.append("")
                 file_key = (dut_sn, csv_file, sequence_path)
                 file_coverage_results = coverage_groups.get(file_key, [])
